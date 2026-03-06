@@ -15,6 +15,7 @@ Endpoints:
 import logging
 import os
 import sys
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, HTTPException, Query
@@ -32,6 +33,7 @@ from config import (
 )
 from auth import get_auth_manager
 from camera_manager import get_camera_list, get_stream_manager
+from miot.types import MIoTSetPropertyParam, MIoTActionParam
 
 logging.basicConfig(
     level=getattr(logging, SERVER_LOG_LEVEL.upper(), logging.INFO),
@@ -65,6 +67,23 @@ class OAuthCodeExchangeRequest(BaseModel):
 
     code: str
     state: str
+
+
+class SetPropertyRequest(BaseModel):
+    """Request to set a device property."""
+
+    siid: int
+    piid: int
+    value: Any
+
+
+class CallActionRequest(BaseModel):
+    """Request to call a device action."""
+
+    siid: int
+    aiid: int
+    in_: list = []  # Action input parameters
+
 
 @app.get("/api/auth/login_url", summary="Get Xiaomi OAuth2 login URL")
 async def get_login_url():
@@ -216,6 +235,162 @@ async def list_cameras():
         return {"cameras": cameras}
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("Failed to list cameras: %s", err)
+        raise HTTPException(status_code=500, detail=str(err)) from err
+
+
+@app.get("/api/devices/{did}/properties", summary="Get common properties for a device")
+async def list_device_properties(did: str):
+    """Return known camera control properties for a device.
+    
+    Returns a list of common siid/piid values that control camera features
+    like recording, guard mode, night vision, etc.
+    """
+    auth = get_auth_manager()
+    if not auth.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        # Get the device info
+        devices = await auth.client.get_devices_async()
+        if did not in devices:
+            raise ValueError(f"Device {did} not found")
+        
+        device = devices[did]
+        logger.info("Device: %s (model: %s, name: %s)", did, device.model, device.name)
+        
+        # Return common camera control properties
+        # These are standard MIoT spec properties for cameras
+        common_properties = {
+            "did": did,
+            "model": device.model,
+            "name": device.name,
+            "properties": [
+                {
+                    "description": "Guard mode (security/monitoring on/off)",
+                    "siid": 2,
+                    "piid": 1,
+                    "type": "boolean",
+                    "test_value": True
+                },
+                {
+                    "description": "Camera power/enable",
+                    "siid": 2,
+                    "piid": 2,
+                    "type": "boolean",
+                    "test_value": True
+                },
+                {
+                    "description": "Status indicator light",
+                    "siid": 3,
+                    "piid": 1,
+                    "type": "boolean",
+                    "test_value": False
+                },
+                {
+                    "description": "Recording mode",
+                    "siid": 4,
+                    "piid": 1,
+                    "type": "boolean or enum",
+                    "test_value": True
+                },
+                {
+                    "description": "Motion detection/tracking",
+                    "siid": 4,
+                    "piid": 2,
+                    "type": "boolean",
+                    "test_value": True
+                },
+                {
+                    "description": "Night vision/infrared",
+                    "siid": 5,
+                    "piid": 1,
+                    "type": "enum",
+                    "test_value": "Auto"
+                }
+            ],
+            "hint": "Try these siid/piid combinations. If one returns 'success': true, it controls that feature. You can find exact specs at: /backend/cache/miot_specs/spec_std_lib.dict"
+        }
+        
+        return common_properties
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("Failed to list properties: %s", err)
+        raise HTTPException(status_code=500, detail=str(err)) from err
+
+
+@app.post("/api/devices/{did}/prop/set", summary="Set device property")
+async def set_device_property(did: str, payload: SetPropertyRequest):
+    """Set a boolean property on a device (e.g., enable/disable recording).
+    
+    Args:
+        did: Device ID from the URL path
+        payload: Request with siid (service instance ID), piid (property instance ID), and value
+        
+    Returns:
+        Result from the cloud API
+    """
+    auth = get_auth_manager()
+    if not auth.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        client = auth.client
+        if not client or not client.http_client:
+            raise RuntimeError("MIoT client not initialized")
+        
+        # Create a property param with the device ID from the URL
+        param = MIoTSetPropertyParam(
+            did=did,
+            siid=payload.siid,
+            piid=payload.piid,
+            value=payload.value
+        )
+        
+        result = await client.http_client.set_prop_async(param=param)
+        logger.info("Set property: did=%s siid=%d piid=%d value=%s -> %s", 
+                   did, payload.siid, payload.piid, payload.value, result)
+        
+        return {"success": True, "result": result}
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("Failed to set property: %s", err)
+        raise HTTPException(status_code=500, detail=str(err)) from err
+
+
+@app.post("/api/devices/{did}/action", summary="Call device action")
+async def call_device_action(did: str, payload: CallActionRequest):
+    """Call an action on a device (e.g., pan camera left/right, tilt up/down).
+    
+    Args:
+        did: Device ID from the URL path
+        payload: Request with siid (service instance ID), aiid (action instance ID), 
+                and optional in_ (list of input parameters)
+        
+    Returns:
+        Result from the cloud API
+    """
+    auth = get_auth_manager()
+    if not auth.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        client = auth.client
+        if not client or not client.http_client:
+            raise RuntimeError("MIoT client not initialized")
+        
+        # Create an action param
+        param = MIoTActionParam(
+            did=did,
+            siid=payload.siid,
+            aiid=payload.aiid,
+            in_=payload.in_
+        )
+        
+        result = await client.http_client.action_async(param=param)
+        logger.info("Called action: did=%s siid=%d aiid=%d -> %s", 
+                   did, payload.siid, payload.aiid, result)
+        
+        return {"success": True, "result": result}
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("Failed to call action: %s", err)
         raise HTTPException(status_code=500, detail=str(err)) from err
 
 

@@ -37,12 +37,37 @@ FastAPI backend (main.py)
 - Node.js 20+ (for frontend development)
 - A Xiaomi Home account with at least one camera
 
-### Development Mode
+### Python Virtual Environment Setup
 
-**1. Backend**
+It's recommended to use a Python virtual environment to isolate dependencies.
+
+**Creating a Virtual Environment:**
 
 ```bash
 # From the repository root
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+
+# On Windows (Command Prompt):
+venv\Scripts\activate.bat
+
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+Once activated, your terminal prompt should show `(venv)` at the beginning.
+
+### Development Mode
+
+**1. Backend (with virtual environment)**
+
+```bash
+# From the repository root, ensure venv is activated
+# (You should see (venv) in your terminal prompt)
+
 cd poc-xiaomi-camera-integration/backend
 
 # Install miot_kit (from parent repo)

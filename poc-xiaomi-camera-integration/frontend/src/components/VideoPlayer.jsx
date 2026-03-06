@@ -81,7 +81,7 @@ const styles = {
     height: '100%',
     objectFit: 'contain',
   },
-  overlay: {
+  overlayMessage: {
     position: 'absolute',
     inset: 0,
     display: 'flex',
@@ -259,14 +259,14 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
       <canvas ref={canvasRef} style={styles.canvas} />
 
       {phase === 'connecting' && (
-        <div style={styles.overlay}>
+        <div style={styles.overlayMessage}>
           <div style={styles.spinner} />
           <span>Connecting to camera...</span>
         </div>
       )}
 
       {phase === 'error' && (
-        <div style={styles.overlay}>
+        <div style={styles.overlayMessage}>
           <span>⚠️ {errorMsg || 'Stream error'}</span>
           <button style={styles.reconnectBtn} onClick={startStream}>
             Reconnect
