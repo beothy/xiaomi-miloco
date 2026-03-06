@@ -1,11 +1,14 @@
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: poc-xiaomi-camera-integration/backend/Dockerfile
     container_name: poc-camera-backend
-    # NOTICE: host network is required for mDNS/LAN camera discovery
-    network_mode: host
+    # Use bridge network but expose port for host access
+    expose:
+      - "8080"
+    ports:
+      - "8080:8080"
     environment:
       - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
       - SERVER_PORT=${SERVER_PORT:-8080}
@@ -17,6 +20,8 @@ services:
       - CACHE_DIR=/app/cache
     volumes:
       - poc_cache:/app/cache
+    networks:
+      - miloco-net
     restart: unless-stopped
 
   frontend:
@@ -28,7 +33,13 @@ services:
       - "${FRONTEND_PORT:-5173}:80"
     depends_on:
       - backend
+    networks:
+      - miloco-net
     restart: unless-stopped
 
 volumes:
   poc_cache:
+
+networks:
+  miloco-net:
+    driver: bridge

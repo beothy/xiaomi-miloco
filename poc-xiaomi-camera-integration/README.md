@@ -88,9 +88,6 @@ docker compose up --build
 
 The application will be available at `http://localhost:5173`.
 
-> **Note:** The backend uses `network_mode: host` so it can discover Xiaomi
-> cameras on the local network via mDNS.
-
 ## Usage
 
 1. Open `http://localhost:5173` in **Chrome 94+** or **Edge 94+**

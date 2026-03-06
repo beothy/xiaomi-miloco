@@ -9,14 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install miot_kit from parent repo
-COPY ../miot_kit ./miot_kit
+COPY miot_kit ./miot_kit
 RUN pip install --no-cache-dir ./miot_kit
 
 # Install PoC backend dependencies
-COPY backend/requirements.txt ./
+COPY poc-xiaomi-camera-integration/backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source
-COPY backend/ ./
+COPY poc-xiaomi-camera-integration/backend/ ./
 
 CMD ["python", "main.py"]
