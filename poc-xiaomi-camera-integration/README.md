@@ -95,10 +95,14 @@ The application will be available at `http://localhost:5173`.
 2. Click **"Login with Xiaomi Home"** – a popup will open with the Xiaomi
    authorization page.
 3. Sign in with your Xiaomi Home account and grant access.
-4. The popup closes and you are redirected to the Dashboard.
-5. Your cameras are listed with their status.
-6. Click **▶ Play** on any online camera to start the live stream.
-7. Click **■ Stop** to close the stream.
+4. If the popup reaches `https://127.0.0.1/?code=...&state=...` and shows
+   "This site can't be reached", copy that full URL from the popup address bar,
+   close the popup, and paste it into the login page helper.
+5. Click **"Complete Login from Redirect URL"**.
+6. You are redirected to the Dashboard.
+7. Your cameras are listed with their status.
+8. Click **▶ Play** on any online camera to start the live stream.
+9. Click **■ Stop** to close the stream.
 
 ## Configuration
 
@@ -113,6 +117,10 @@ Copy `.env.example` to `.env` and adjust the values:
 | `OAUTH2_REDIRECT_URI` | `https://127.0.0.1`    | Must match a URI registered in Xiaomi OAuth2 Service |
 | `CLOUD_SERVER`      | `cn`                     | Xiaomi cloud region (cn/de/us/ru/tw/sg/in/i2)        |
 | `FRAME_INTERVAL`    | `500`                    | Camera frame interval in ms                          |
+
+`OAUTH2_REDIRECT_URI` must match Xiaomi's whitelist for the default `miot_kit` client ID.
+Use `https://127.0.0.1` (or Xiaomi's official `https://mico.api.mijia.tech/login_redirect`).
+`https://localhost/...` is rejected by Xiaomi as `invalid redirect uri`.
 
 ## Project Structure
 

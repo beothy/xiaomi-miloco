@@ -63,6 +63,46 @@ const styles = {
   errorText: {
     color: '#ff4d4f',
   },
+  helper: {
+    marginTop: 16,
+    textAlign: 'left',
+    fontSize: 13,
+    color: '#555',
+    lineHeight: 1.4,
+  },
+  input: {
+    width: '100%',
+    marginTop: 10,
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    fontSize: 13,
+    boxSizing: 'border-box',
+  },
+  secondaryButton: {
+    width: '100%',
+    marginTop: 10,
+    padding: '10px 0',
+    background: '#1a1a2e',
+    color: 'white',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  ghostButton: {
+    width: '100%',
+    marginTop: 10,
+    padding: '10px 0',
+    background: 'white',
+    color: '#1a1a2e',
+    border: '1px solid #1a1a2e',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
 }
 
 /**
@@ -73,9 +113,62 @@ const styles = {
  */
 const Login = ({ onLogin }) => {
   const [loading, setLoading] = useState(false)
+  const [manualLoading, setManualLoading] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
   const [error, setError] = useState(false)
+  const [manualRedirectUrl, setManualRedirectUrl] = useState('')
+  const [showManualHelper, setShowManualHelper] = useState(false)
   const popupRef = useRef(null)
+
+  const exchangeCodeState = useCallback(
+    async (code, state) => {
+      await axios.post('/api/auth/exchange', { code, state })
+      setStatusMsg('Login successful! Redirecting...')
+      setError(false)
+      setShowManualHelper(false)
+      onLogin()
+    },
+    [onLogin],
+  )
+
+  const parseCodeStateFromUrl = useCallback((rawUrl) => {
+    if (!rawUrl) {
+      return null
+    }
+    try {
+      const parsed = new URL(rawUrl.trim())
+      const code = parsed.searchParams.get('code')
+      const state = parsed.searchParams.get('state')
+      if (!code || !state) {
+        return null
+      }
+      return { code, state }
+    } catch {
+      return null
+    }
+  }, [])
+
+  const tryCompleteFromClipboard = useCallback(async () => {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      return false
+    }
+    try {
+      const clipText = await navigator.clipboard.readText()
+      const parsed = parseCodeStateFromUrl(clipText)
+      if (!parsed) {
+        return false
+      }
+      setManualLoading(true)
+      setStatusMsg('Detected redirect URL in clipboard. Completing login...')
+      setError(false)
+      await exchangeCodeState(parsed.code, parsed.state)
+      return true
+    } catch {
+      return false
+    } finally {
+      setManualLoading(false)
+    }
+  }, [exchangeCodeState, parseCodeStateFromUrl])
 
   // Listen for postMessage from the OAuth callback popup
   useEffect(() => {
@@ -97,6 +190,7 @@ const Login = ({ onLogin }) => {
 
   const handleLogin = useCallback(async () => {
     setLoading(true)
+    setShowManualHelper(false)
     setStatusMsg('Fetching login URL...')
     setError(false)
     try {
@@ -118,11 +212,17 @@ const Login = ({ onLogin }) => {
       const timer = setInterval(() => {
         if (!popup || popup.closed) {
           clearInterval(timer)
-          if (loading) {
+          const completeAfterClose = async () => {
             setLoading(false)
-            setStatusMsg('Popup closed. Please try again.')
+            const autoDone = await tryCompleteFromClipboard()
+            if (autoDone) {
+              return
+            }
+            setStatusMsg('Popup closed. Paste the full redirected URL below to finish login.')
             setError(true)
+            setShowManualHelper(true)
           }
+          completeAfterClose()
         }
       }, 500)
     } catch (err) {
@@ -130,7 +230,60 @@ const Login = ({ onLogin }) => {
       setStatusMsg(`Error: ${err.response?.data?.detail || err.message}`)
       setError(true)
     }
-  }, [loading])
+  }, [])
+
+  const handleManualExchange = useCallback(async () => {
+    const parsed = parseCodeStateFromUrl(manualRedirectUrl)
+    if (!manualRedirectUrl.trim()) {
+      setStatusMsg('Paste the full redirected URL from the popup first.')
+      setError(true)
+      return
+    }
+    if (!parsed) {
+      setStatusMsg('The URL does not contain code/state. Make sure it is the final redirected URL.')
+      setError(true)
+      return
+    }
+
+    setManualLoading(true)
+    setStatusMsg('Exchanging authorization code...')
+    setError(false)
+    try {
+      await exchangeCodeState(parsed.code, parsed.state)
+    } catch (err) {
+      setStatusMsg(`Exchange failed: ${err.response?.data?.detail || err.message}`)
+      setError(true)
+    } finally {
+      setManualLoading(false)
+    }
+  }, [manualRedirectUrl, parseCodeStateFromUrl, exchangeCodeState])
+
+  const handleClipboardExchange = useCallback(async () => {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      setStatusMsg('Clipboard API is not available in this browser.')
+      setError(true)
+      return
+    }
+
+    setManualLoading(true)
+    setStatusMsg('Reading redirect URL from clipboard...')
+    setError(false)
+    try {
+      const clipText = await navigator.clipboard.readText()
+      const parsed = parseCodeStateFromUrl(clipText)
+      if (!parsed) {
+        setStatusMsg('Clipboard does not contain a valid redirected URL with code/state.')
+        setError(true)
+        return
+      }
+      await exchangeCodeState(parsed.code, parsed.state)
+    } catch (err) {
+      setStatusMsg(`Clipboard read failed: ${err.message}`)
+      setError(true)
+    } finally {
+      setManualLoading(false)
+    }
+  }, [parseCodeStateFromUrl, exchangeCodeState])
 
   return (
     <div style={styles.page}>
@@ -150,6 +303,39 @@ const Login = ({ onLogin }) => {
         <p style={{ ...styles.status, ...(error ? styles.errorText : {}) }}>
           {statusMsg}
         </p>
+        {showManualHelper && (
+          <div style={styles.helper}>
+            Xiaomi redirects to <code>https://127.0.0.1/?code=...&amp;state=...</code>.
+            If that page fails to open, copy the full URL from the popup address bar and paste it below.
+            <input
+              style={styles.input}
+              type="text"
+              placeholder="https://127.0.0.1/?code=...&state=..."
+              value={manualRedirectUrl}
+              onChange={(event) => setManualRedirectUrl(event.target.value)}
+            />
+            <button
+              style={{
+                ...styles.ghostButton,
+                ...(manualLoading ? styles.buttonDisabled : {}),
+              }}
+              onClick={handleClipboardExchange}
+              disabled={manualLoading}
+            >
+              {manualLoading ? 'Reading Clipboard...' : 'Use URL from Clipboard'}
+            </button>
+            <button
+              style={{
+                ...styles.secondaryButton,
+                ...(manualLoading ? styles.buttonDisabled : {}),
+              }}
+              onClick={handleManualExchange}
+              disabled={manualLoading}
+            >
+              {manualLoading ? 'Exchanging...' : 'Complete Login from Redirect URL'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

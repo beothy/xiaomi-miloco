@@ -15,8 +15,8 @@ SERVER_LOG_LEVEL: str = os.environ.get("SERVER_LOG_LEVEL", "info")
 # Frontend URL for CORS and OAuth2 redirect
 FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
-# OAuth2 redirect URI - must match what's registered in Xiaomi OAuth2 Service
-# Defaults to localhost for development
+# OAuth2 redirect URI - must match Xiaomi OAuth2 whitelist for this client_id.
+# For miot_kit default client_id, use https://127.0.0.1 (localhost hostnames are rejected).
 OAUTH2_REDIRECT_URI: str = os.environ.get(
     "OAUTH2_REDIRECT_URI", "https://127.0.0.1"
 )

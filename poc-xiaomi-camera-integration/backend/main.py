@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocketDisconnect
+from pydantic import BaseModel
 
 from config import (
     FRONTEND_URL,
@@ -57,6 +58,13 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
+
+
+class OAuthCodeExchangeRequest(BaseModel):
+    """OAuth2 code exchange request payload."""
+
+    code: str
+    state: str
 
 @app.get("/api/auth/login_url", summary="Get Xiaomi OAuth2 login URL")
 async def get_login_url():
@@ -171,6 +179,26 @@ async def auth_status():
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("Failed to check auth status: %s", err)
         return {"authenticated": False}
+
+
+@app.post("/api/auth/exchange", summary="Exchange OAuth2 code and state")
+async def exchange_oauth_code(payload: OAuthCodeExchangeRequest):
+    """Exchange OAuth2 code/state for token when callback cannot be hosted locally."""
+    auth = get_auth_manager()
+    try:
+        oauth_info = await auth.process_callback(code=payload.code, state=payload.state)
+        user_info = oauth_info.user_info
+        return {
+            "authenticated": True,
+            "user": {
+                "uid": user_info.uid if user_info else None,
+                "nickname": user_info.nickname if user_info else None,
+                "icon": user_info.icon if user_info else None,
+            },
+        }
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("OAuth code exchange failed: %s", err)
+        raise HTTPException(status_code=400, detail=str(err)) from err
 
 
 # ---------------------------------------------------------------------------
