@@ -51,8 +51,17 @@ async def get_camera_list() -> List[dict]:
     if not client:
         raise RuntimeError("MIoT client not initialized")
 
-    # Refresh camera list from cloud
+    # First get devices with cloud online status
+    devices = await client.get_devices_async()
+    
+    # Then get camera-specific info (unfortunately this overwrites online status)
     cameras = await client.get_cameras_async()
+    
+    # Restore the cloud online status from devices
+    for did, camera_info in cameras.items():
+        if did in devices:
+            camera_info.online = devices[did].online
+    
     logger.info("Discovered %d cameras", len(cameras))
     return [_camera_info_to_dict(info) for info in cameras.values()]
 
