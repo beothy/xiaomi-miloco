@@ -411,14 +411,15 @@ async def video_stream(
         channel: Camera channel number (default 0).
     """
     auth = get_auth_manager()
-    if not auth.is_authenticated:
-        await websocket.close(code=4001, reason="Not authenticated")
-        return
-
     stream_mgr = get_stream_manager()
     conn_id = None
     try:
         await websocket.accept()
+
+        if not auth.is_authenticated:
+            await websocket.close(code=4001, reason="Not authenticated")
+            return
+
         conn_id = await stream_mgr.new_connection(
             websocket=websocket,
             camera_id=camera_id,
