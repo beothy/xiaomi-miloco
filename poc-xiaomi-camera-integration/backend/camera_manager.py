@@ -6,9 +6,10 @@ Camera manager for the PoC.
 Wraps miot_kit camera functionality to manage camera discovery and streaming.
 """
 
+import json
 import logging
 from collections import OrderedDict
-from typing import Callable, Coroutine, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from fastapi.websockets import WebSocketState
 from fastapi import WebSocket
@@ -16,6 +17,7 @@ from fastapi import WebSocket
 from miot.types import MIoTCameraInfo, MIoTCameraStatus, MIoTCameraVideoQuality
 
 from auth import get_auth_manager
+from config import FRAME_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +185,7 @@ class VideoStreamManager:
 
         # Create or retrieve the camera instance
         camera_instance = await client.create_camera_instance_async(
-            camera_info, frame_interval=500
+            camera_info, frame_interval=FRAME_INTERVAL
         )
 
         async def on_raw_video(
@@ -191,9 +193,26 @@ class VideoStreamManager:
         ) -> None:
             await self._on_video_frame(did, data, ch)
 
+        async def on_status_changed(did: str, status: MIoTCameraStatus) -> None:
+            """Forward camera connection status to all WebSocket clients."""
+            camera_tag = f"{camera_id}.{channel}"
+            if camera_tag not in self._connections:
+                return
+            msg = json.dumps({
+                "type": "camera_status",
+                "status": status.value,
+                "status_name": status.name,
+            })
+            for ws in list(self._connections[camera_tag].values()):
+                try:
+                    await ws.send_text(msg)
+                except Exception as err:  # pylint: disable=broad-exception-caught
+                    logger.debug("Failed to send status update to client: %s", err)
+
         await camera_instance.register_raw_video_async(
             callback=on_raw_video, channel=channel
         )
+        await camera_instance.register_status_changed_async(callback=on_status_changed)
         await camera_instance.start_async(
             qualities=MIoTCameraVideoQuality.HIGH,
             enable_reconnect=True,
@@ -214,6 +233,7 @@ class VideoStreamManager:
         camera_instance = await client.camera_client.get_camera_instance_async(camera_id)
         if camera_instance:
             await camera_instance.unregister_raw_video_async(channel=channel)
+            await camera_instance.unregister_status_changed_async()
             await camera_instance.stop_async()
 
     async def _on_video_frame(

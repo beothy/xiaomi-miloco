@@ -112,6 +112,16 @@ const styles = {
     cursor: 'pointer',
     fontSize: 13,
   },
+  closeBtn: {
+    marginTop: 4,
+    padding: '6px 16px',
+    background: '#8c8c8c',
+    color: 'white',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontSize: 13,
+  },
 }
 
 /**
@@ -134,6 +144,7 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
 
   const [phase, setPhase] = useState('connecting') // connecting | playing | error
   const [errorMsg, setErrorMsg] = useState('')
+  const [statusMsg, setStatusMsg] = useState('Connecting to camera...')
 
   const cleanup = () => {
     if (wsRef.current) {
@@ -152,6 +163,7 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
     waitForKeyFrameRef.current = true
     setPhase('connecting')
     setErrorMsg('')
+    setStatusMsg('Connecting to camera...')
 
     // Requires WebCodecs (Chrome 94+, Edge 94+) and HTTPS or localhost
     if (
@@ -209,6 +221,25 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
       }
     }
     wsRef.current.onmessage = (evt) => {
+      // Handle JSON status messages (text) sent by the server
+      if (typeof evt.data === 'string') {
+        try {
+          const msg = JSON.parse(evt.data)
+          if (msg.type === 'camera_status') {
+            // MIoTCameraStatus: 1=DISCONNECTED, 2=CONNECTING, 3=RECONNECTING, 4=CONNECTED, 5=ERROR
+            if (msg.status === 4) {
+              setStatusMsg('Camera connected, waiting for first frame...')
+            } else if (msg.status === 5) {
+              setPhase('error')
+              setErrorMsg(`Camera error: ${msg.status_name}`)
+            } else {
+              setStatusMsg(`Camera ${msg.status_name.toLowerCase()}...`)
+            }
+          }
+        } catch (_) { /* ignore malformed messages */ }
+        return
+      }
+
       if (!(evt.data instanceof ArrayBuffer)) return
       const uint8 = new Uint8Array(evt.data)
 
@@ -261,7 +292,15 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
       {phase === 'connecting' && (
         <div style={styles.overlayMessage}>
           <div style={styles.spinner} />
-          <span>Connecting to camera...</span>
+          <span>{statusMsg}</span>
+          {onStop && (
+            <button
+              style={styles.closeBtn}
+              onClick={onStop}
+            >
+              Close
+            </button>
+          )}
         </div>
       )}
 
@@ -273,7 +312,7 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
           </button>
           {onStop && (
             <button
-              style={{ ...styles.reconnectBtn, background: '#8c8c8c', marginTop: 4 }}
+              style={styles.closeBtn}
               onClick={onStop}
             >
               Close
