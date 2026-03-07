@@ -22,7 +22,7 @@ OAUTH2_REDIRECT_URI: str = os.environ.get(
 )
 
 # Xiaomi cloud server region: cn, de, us, ru, tw, sg, in, i2
-CLOUD_SERVER: str = os.environ.get("CLOUD_SERVER", "cn")
+CLOUD_SERVER: str = os.environ.get("CLOUD_SERVER", "de")
 
 # Camera stream frame interval in milliseconds
 FRAME_INTERVAL: int = int(os.environ.get("FRAME_INTERVAL", "500"))

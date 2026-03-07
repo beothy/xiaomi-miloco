@@ -67,6 +67,7 @@ class OAuthCodeExchangeRequest(BaseModel):
 
     code: str
     state: str
+    region: str = "cn"  # Cloud server region (cn, de, us, ru, tw, sg, in, i2)
 
 
 class SetPropertyRequest(BaseModel):
@@ -86,11 +87,11 @@ class CallActionRequest(BaseModel):
 
 
 @app.get("/api/auth/login_url", summary="Get Xiaomi OAuth2 login URL")
-async def get_login_url():
-    """Return the Xiaomi Home OAuth2 authorization URL."""
+async def get_login_url(region: str = Query("cn")):
+    """Return the Xiaomi Home OAuth2 authorization URL for the specified region."""
     auth = get_auth_manager()
     try:
-        url = await auth.get_login_url()
+        url = await auth.get_login_url(region=region)
         return {"login_url": url}
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("Failed to generate login URL: %s", err)
@@ -205,7 +206,11 @@ async def exchange_oauth_code(payload: OAuthCodeExchangeRequest):
     """Exchange OAuth2 code/state for token when callback cannot be hosted locally."""
     auth = get_auth_manager()
     try:
-        oauth_info = await auth.process_callback(code=payload.code, state=payload.state)
+        oauth_info = await auth.process_callback(
+            code=payload.code, 
+            state=payload.state, 
+            region=payload.region
+        )
         user_info = oauth_info.user_info
         return {
             "authenticated": True,

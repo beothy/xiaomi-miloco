@@ -79,6 +79,26 @@ const styles = {
     fontSize: 13,
     boxSizing: 'border-box',
   },
+  regionSelector: {
+    marginTop: 20,
+    textAlign: 'left',
+  },
+  regionLabel: {
+    display: 'block',
+    fontSize: 14,
+    fontWeight: 500,
+    color: '#1a1a2e',
+    marginBottom: 8,
+  },
+  regionSelect: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    fontSize: 13,
+    boxSizing: 'border-box',
+    cursor: 'pointer',
+  },
   secondaryButton: {
     width: '100%',
     marginTop: 10,
@@ -118,17 +138,30 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState(false)
   const [manualRedirectUrl, setManualRedirectUrl] = useState('')
   const [showManualHelper, setShowManualHelper] = useState(false)
+  const [region, setRegion] = useState('cn') // Add region selection state
   const popupRef = useRef(null)
+
+  // Supported regions
+  const regions = [
+    { code: 'cn', name: '🇨🇳 China' },
+    { code: 'de', name: '🇩🇪 Europe' },
+    { code: 'us', name: '🇺🇸 United States' },
+    { code: 'ru', name: '🇷🇺 Russia' },
+    { code: 'tw', name: '🇹🇼 Taiwan' },
+    { code: 'sg', name: '🇸🇬 Singapore' },
+    { code: 'in', name: '🇮🇳 India' },
+    { code: 'i2', name: '🌍 International' },
+  ]
 
   const exchangeCodeState = useCallback(
     async (code, state) => {
-      await axios.post('/api/auth/exchange', { code, state })
+      await axios.post('/api/auth/exchange', { code, state, region })
       setStatusMsg('Login successful! Redirecting...')
       setError(false)
       setShowManualHelper(false)
       onLogin()
     },
-    [onLogin],
+    [onLogin, region],
   )
 
   const parseCodeStateFromUrl = useCallback((rawUrl) => {
@@ -194,7 +227,7 @@ const Login = ({ onLogin }) => {
     setStatusMsg('Fetching login URL...')
     setError(false)
     try {
-      const res = await axios.get('/api/auth/login_url')
+      const res = await axios.get('/api/auth/login_url', { params: { region } })
       const { login_url } = res.data
       if (!login_url) {
         throw new Error('No login URL returned from server')
@@ -230,7 +263,7 @@ const Login = ({ onLogin }) => {
       setStatusMsg(`Error: ${err.response?.data?.detail || err.message}`)
       setError(true)
     }
-  }, [])
+  }, [region])
 
   const handleManualExchange = useCallback(async () => {
     const parsed = parseCodeStateFromUrl(manualRedirectUrl)
@@ -293,8 +326,23 @@ const Login = ({ onLogin }) => {
         <p style={styles.subtitle}>
           Sign in with your Xiaomi Home account to view your cameras.
         </p>
+        <div style={styles.regionSelector}>
+          <label style={styles.regionLabel}>Select Region</label>
+          <select
+            style={styles.regionSelect}
+            value={region}
+            onChange={(event) => setRegion(event.target.value)}
+            disabled={loading || manualLoading}
+          >
+            {regions.map((r) => (
+              <option key={r.code} value={r.code}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
-          style={{ ...styles.button, ...(loading ? styles.buttonDisabled : {}) }}
+          style={{ ...styles.button, ...(loading ? styles.buttonDisabled : {}), marginTop: 16 }}
           onClick={handleLogin}
           disabled={loading}
         >
