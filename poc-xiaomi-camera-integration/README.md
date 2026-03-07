@@ -210,3 +210,12 @@ Firefox is not supported for video playback (WebCodecs is not available).
 
 Tested with **Xiaomi C301**. Should work with any Xiaomi camera supported by
 `miot_kit` (cameras that appear in Xiaomi Home).
+
+## Troubleshooting
+
+If cameras are listed correctly but the video stream never plays (stuck on
+"Connecting…" / `PPCS_Connect errorcode: -3` in the backend log), see
+**[CONNECTIVITY_ISSUE.md](CONNECTIVITY_ISSUE.md)** for a full root-cause analysis and
+step-by-step solutions. The most common cause is running the backend inside
+Docker Desktop on Windows, which blocks the P2P UDP connection the camera stream
+requires.
