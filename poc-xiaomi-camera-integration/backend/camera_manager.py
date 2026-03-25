@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 from fastapi.websockets import WebSocketState
 from fastapi import WebSocket
 
-from miot.types import MIoTCameraInfo, MIoTCameraStatus
+from miot.types import MIoTCameraInfo, MIoTCameraStatus, MIoTCameraVideoQuality
 
 from auth import get_auth_manager
 from config import FRAME_INTERVAL
@@ -180,7 +180,9 @@ class VideoStreamManager:
                 camera_instance = await client.create_camera_instance_async(
                     camera_info, frame_interval=FRAME_INTERVAL
                 )
-                await camera_instance.start_async(enable_reconnect=True)
+                await camera_instance.start_async(
+                    qualities=MIoTCameraVideoQuality.HIGH, enable_reconnect=True
+                )
                 self._started_cameras.add(camera_id)
                 logger.info("Eagerly started camera instance for %s", camera_id)
             except Exception as err:  # pylint: disable=broad-exception-caught
@@ -215,7 +217,9 @@ class VideoStreamManager:
 
         # Start the instance if it wasn't eagerly started (e.g. late-discovered camera)
         if camera_id not in self._started_cameras:
-            await camera_instance.start_async(enable_reconnect=True)
+            await camera_instance.start_async(
+                qualities=MIoTCameraVideoQuality.HIGH, enable_reconnect=True
+            )
             self._started_cameras.add(camera_id)
             logger.info("Started camera instance for %s (on-demand fallback)", camera_id)
 

@@ -122,6 +122,24 @@ const styles = {
     cursor: 'pointer',
     fontSize: 13,
   },
+  fullscreenBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    background: 'rgba(0,0,0,0.45)',
+    color: 'white',
+    border: 'none',
+    borderRadius: 4,
+    width: 28,
+    height: 28,
+    fontSize: 16,
+    lineHeight: '28px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    opacity: 0.7,
+  },
 }
 
 /**
@@ -137,6 +155,7 @@ const styles = {
  */
 const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
   const canvasRef = useRef(null)
+  const wrapperRef = useRef(null)
   const wsRef = useRef(null)
   const decoderRef = useRef(null)
   const autoCodecRef = useRef(null)
@@ -145,6 +164,7 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
   const [phase, setPhase] = useState('connecting') // connecting | playing | error
   const [errorMsg, setErrorMsg] = useState('')
   const [statusMsg, setStatusMsg] = useState('Connecting to camera...')
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const cleanup = () => {
     if (wsRef.current) {
@@ -285,9 +305,30 @@ const VideoPlayer = ({ cameraId, channel = 0, onStop }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraId, channel])
 
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      wrapperRef.current?.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
+  }
+
   return (
-    <div style={styles.wrapper}>
+    <div ref={wrapperRef} style={styles.wrapper}>
       <canvas ref={canvasRef} style={styles.canvas} />
+      <button
+        onClick={toggleFullscreen}
+        title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        style={styles.fullscreenBtn}
+      >
+        {isFullscreen ? '⊡' : '⛶'}
+      </button>
 
       {phase === 'connecting' && (
         <div style={styles.overlayMessage}>

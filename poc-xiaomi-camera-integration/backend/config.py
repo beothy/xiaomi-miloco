@@ -24,8 +24,8 @@ OAUTH2_REDIRECT_URI: str = os.environ.get(
 # Xiaomi cloud server region: cn, de, us, ru, tw, sg, in, i2
 CLOUD_SERVER: str = os.environ.get("CLOUD_SERVER", "de")
 
-# Camera stream frame interval in milliseconds
-FRAME_INTERVAL: int = int(os.environ.get("FRAME_INTERVAL", "500"))
+# Camera stream frame interval in milliseconds (33 ≈ 30 fps)
+FRAME_INTERVAL: int = int(os.environ.get("FRAME_INTERVAL", "33"))
 
 # Cache directory for miot_kit
 CACHE_DIR: str = os.environ.get("CACHE_DIR", "/tmp/poc-camera-cache")

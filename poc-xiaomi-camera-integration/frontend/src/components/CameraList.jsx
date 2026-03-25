@@ -161,6 +161,7 @@ const CameraCard = ({ camera }) => {
   const [isEnabled, setIsEnabled] = useState(true)
   const [togglingPower, setTogglingPower] = useState(false)
   const [ptzLoading, setPtzLoading] = useState(false)
+  const [metaExpanded, setMetaExpanded] = useState(false)
 
   const handleTogglePower = async () => {
     setTogglingPower(true)
@@ -249,12 +250,32 @@ const CameraCard = ({ camera }) => {
       <div style={styles.meta}>
         <span>📍 {camera.room_name || camera.home_name || '—'}</span>
         <span>📡 {camera.model}</span>
-        {camera.local_ip && <span>🌐 {camera.local_ip}</span>}
         <span style={{ color: statusInfo.color }}>● {statusInfo.label}</span>
         {camera.fw_version && <span>🔧 FW {camera.fw_version}</span>}
         {camera.rssi != null && <span>📶 {camera.rssi} dBm</span>}
         {camera.ssid && <span>WiFi: {camera.ssid}</span>}
+        <span
+          style={{ color: '#1677ff', cursor: 'pointer', fontSize: 11 }}
+          onClick={() => setMetaExpanded(e => !e)}
+        >
+          {metaExpanded ? '▴ less' : '▾ more'}
+        </span>
       </div>
+
+      {/* Collapsible extra metadata */}
+      {metaExpanded && (
+        <div style={{ ...styles.meta, paddingTop: 0, borderTop: '1px dashed #f0f0f0', marginTop: -4 }}>
+          <span title="Device ID">🆔 {camera.did}</span>
+          {camera.home_name && camera.room_name && <span>🏠 {camera.home_name}</span>}
+          <span>🌐 IP: {camera.local_ip || '—'}</span>
+          <span style={{ color: camera.lan_status ? '#52c41a' : '#aaa' }}>
+            🔗 LAN: {camera.lan_status ? 'connected' : 'offline'}
+          </span>
+          {camera.mcu_version && <span>🔩 MCU {camera.mcu_version}</span>}
+          {camera.platform && <span>💻 {camera.platform}</span>}
+          <span>📹 {camera.channel_count} ch</span>
+        </div>
+      )}
 
       {/* Video area */}
       <div style={styles.videoWrapper}>
