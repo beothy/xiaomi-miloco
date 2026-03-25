@@ -237,6 +237,9 @@ async def list_cameras():
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         cameras = await get_camera_list()
+        # Eagerly start all camera instances so the relay connection is established
+        # before any viewer connects (mirrors miloco_server behavior).
+        await get_stream_manager().start_all_cameras_async()
         return {"cameras": cameras}
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("Failed to list cameras: %s", err)

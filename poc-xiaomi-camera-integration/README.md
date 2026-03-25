@@ -44,21 +44,22 @@ It's recommended to use a Python virtual environment to isolate dependencies.
 **Creating a Virtual Environment:**
 
 ```bash
-# From the repository root
-python -m venv venv
+# From the repository root (recommended: create .venv at the repo root
+# so it is shared between miloco_server and this PoC)
+python -m venv .venv
 
 # Activate the virtual environment
 # On Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 
 # On Windows (Command Prompt):
-venv\Scripts\activate.bat
+.venv\Scripts\activate.bat
 
-# On macOS/Linux:
-source venv/bin/activate
+# On macOS/Linux / WSL2:
+source .venv/bin/activate
 ```
 
-Once activated, your terminal prompt should show `(venv)` at the beginning.
+Once activated, your terminal prompt should show `(.venv)` at the beginning.
 
 ### Development Mode
 
@@ -70,15 +71,13 @@ Once activated, your terminal prompt should show `(venv)` at the beginning.
 
 cd poc-xiaomi-camera-integration/backend
 
-# Install miot_kit (from parent repo)
+# Install miot_kit (from parent repo) and backend dependencies
 pip install ../../miot_kit
-
-# Install backend dependencies
 pip install -r requirements.txt
 
 # Copy and edit environment variables
 cp ../.env.example ../.env
-# Edit ../.env as needed
+# Edit ../.env – set CLOUD_SERVER to your region (cn/de/us/…)
 
 # Start backend
 python main.py
@@ -141,7 +140,7 @@ Copy `.env.example` to `.env` and adjust the values:
 | `FRONTEND_URL`      | `http://localhost:5173`  | Frontend origin (for CORS)                           |
 | `OAUTH2_REDIRECT_URI` | `https://127.0.0.1`    | Must match a URI registered in Xiaomi OAuth2 Service |
 | `CLOUD_SERVER`      | `cn`                     | Xiaomi cloud region (cn/de/us/ru/tw/sg/in/i2)        |
-| `FRAME_INTERVAL`    | `500`                    | Camera frame interval in ms                          |
+| `FRAME_INTERVAL`    | `66`                     | Camera frame interval in ms (66 ≈ 15 fps; lower = more CPU) |
 
 `OAUTH2_REDIRECT_URI` must match Xiaomi's whitelist for the default `miot_kit` client ID.
 Use `https://127.0.0.1` (or Xiaomi's official `https://mico.api.mijia.tech/login_redirect`).
@@ -219,3 +218,13 @@ If cameras are listed correctly but the video stream never plays (stuck on
 step-by-step solutions. The most common cause is running the backend inside
 Docker Desktop on Windows, which blocks the P2P UDP connection the camera stream
 requires.
+
+**Confirmed working on Windows 11:** run the backend natively inside WSL2 with
+`networkingMode=mirrored` in `%USERPROFILE%\.wslconfig`. See Option 2 in
+CONNECTIVITY_ISSUE.md.  The AI engine (GPU-dependent) can remain in Docker; only the
+camera backend needs to be native.
+
+If the stream plays but drops after several minutes with `ERROR_PPCS_SESSION_CLOSED_REMOTE`
+in the logs, the access token passed to the C library at startup has expired (~1 hour).
+Restarting the backend resets the token. A proper fix (automatic token refresh + client
+reinit) is tracked in [NEXT_STEPS.md](NEXT_STEPS.md).

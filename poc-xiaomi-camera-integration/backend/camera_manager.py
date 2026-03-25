@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 from fastapi.websockets import WebSocketState
 from fastapi import WebSocket
 
-from miot.types import MIoTCameraInfo, MIoTCameraStatus, MIoTCameraVideoQuality
+from miot.types import MIoTCameraInfo, MIoTCameraStatus
 
 from auth import get_auth_manager
 from config import FRAME_INTERVAL
@@ -83,6 +83,7 @@ class VideoStreamManager:
     def __init__(self) -> None:
         self._connections = {}
         self._connection_counter = 0
+        self._started_cameras: set = set()
 
     async def new_connection(
         self,
@@ -107,8 +108,8 @@ class VideoStreamManager:
 
         if is_first:
             self._connections[camera_tag] = OrderedDict()
-            await self._start_stream(camera_id, channel)
-            logger.info("Started video stream for %s", camera_tag)
+            await self._register_callbacks(camera_id, channel)
+            logger.info("Registered stream callbacks for %s", camera_tag)
 
         conn_id = str(self._connection_counter)
         self._connection_counter += 1
@@ -153,16 +154,38 @@ class VideoStreamManager:
 
         if not self._connections[camera_tag]:
             del self._connections[camera_tag]
-            await self._stop_stream(camera_id, channel)
-            logger.info("Stopped video stream for %s (no more connections)", camera_tag)
+            await self._unregister_callbacks(camera_id, channel)
+            logger.info("Unregistered callbacks for %s (no more connections)", camera_tag)
 
-    async def _start_stream(self, camera_id: str, channel: int) -> None:
-        """Start a camera video stream.
+    async def start_all_cameras_async(self) -> None:
+        """Eagerly start all discovered camera instances without any viewers.
 
-        Follows the same pattern as miloco_server:
-        1. Look up camera info from the cameras buffer
-        2. Create a camera instance (idempotent – returns existing if already created)
-        3. Register raw-video callback then start the camera
+        Mirrors miloco_server: cameras connect to the relay at discovery time
+        so the P2P connection is established before any WebSocket viewer arrives.
+        """
+        auth = get_auth_manager()
+        client = auth.client
+        if not client:
+            return
+
+        for camera_id, camera_info in client.cameras_info.items():
+            if camera_id in self._started_cameras:
+                continue
+            try:
+                camera_instance = await client.create_camera_instance_async(
+                    camera_info, frame_interval=FRAME_INTERVAL
+                )
+                await camera_instance.start_async(enable_reconnect=True)
+                self._started_cameras.add(camera_id)
+                logger.info("Eagerly started camera instance for %s", camera_id)
+            except Exception as err:  # pylint: disable=broad-exception-caught
+                logger.error("Failed to eagerly start camera %s: %s", camera_id, err)
+
+    async def _register_callbacks(self, camera_id: str, channel: int) -> None:
+        """Register raw-video and status callbacks for a camera channel.
+
+        The camera instance must already be running (started by start_all_cameras_async).
+        If somehow not yet started (e.g. camera discovered after boot), starts it now.
 
         Args:
             camera_id: Camera device ID.
@@ -173,20 +196,23 @@ class VideoStreamManager:
         if not client:
             raise RuntimeError("MIoT client not initialized")
 
-        # Resolve camera info (must have been fetched by get_camera_list() already)
         cameras = client.cameras_info
         camera_info = cameras.get(camera_id)
         if camera_info is None:
-            # Try refreshing once
             cameras = await client.get_cameras_async()
             camera_info = cameras.get(camera_id)
         if camera_info is None:
             raise RuntimeError(f"Camera {camera_id} not found")
 
-        # Create or retrieve the camera instance
         camera_instance = await client.create_camera_instance_async(
             camera_info, frame_interval=FRAME_INTERVAL
         )
+
+        # Start the instance if it wasn't eagerly started (e.g. late-discovered camera)
+        if camera_id not in self._started_cameras:
+            await camera_instance.start_async(enable_reconnect=True)
+            self._started_cameras.add(camera_id)
+            logger.info("Started camera instance for %s (on-demand fallback)", camera_id)
 
         async def on_raw_video(
             did: str, data: bytes, ts: int, seq: int, ch: int
@@ -213,13 +239,12 @@ class VideoStreamManager:
             callback=on_raw_video, channel=channel
         )
         await camera_instance.register_status_changed_async(callback=on_status_changed)
-        await camera_instance.start_async(
-            qualities=MIoTCameraVideoQuality.HIGH,
-            enable_reconnect=True,
-        )
 
-    async def _stop_stream(self, camera_id: str, channel: int) -> None:
-        """Stop a camera video stream.
+    async def _unregister_callbacks(self, camera_id: str, channel: int) -> None:
+        """Unregister raw-video and status callbacks for a camera channel.
+
+        The camera instance keeps running (no stop_async call), mirroring
+        miloco_server which keeps instances alive between viewers.
 
         Args:
             camera_id: Camera device ID.
@@ -234,7 +259,6 @@ class VideoStreamManager:
         if camera_instance:
             await camera_instance.unregister_raw_video_async(channel=channel)
             await camera_instance.unregister_status_changed_async()
-            await camera_instance.stop_async()
 
     async def _on_video_frame(
         self, camera_id: str, data: bytes, channel: int
@@ -263,7 +287,7 @@ class VideoStreamManager:
 
         if not self._connections[camera_tag]:
             del self._connections[camera_tag]
-            await self._stop_stream(camera_id, channel)
+            await self._unregister_callbacks(camera_id, channel)
 
 
 # Singleton instance

@@ -239,6 +239,6 @@ Check the `miot_kit` camera API for the relevant flag.
 |-------|--------|
 | Backend HTTP / REST APIs (list cameras, set property) | ✅ Working (outbound TCP only) |
 | Browser ↔ backend WebSocket (port 8080) | ✅ Working (explicit TCP port mapping) |
-| Backend ↔ camera P2P video (CS2/PPCS UDP) | ❌ Blocked by Docker Desktop double NAT |
-| Running backend natively on Windows / in WSL2 mirrored | ✅ Expected to work |
+| Backend ↔ camera P2P video (CS2/PPCS UDP) – Docker Desktop | ❌ Blocked by Docker Desktop double NAT |
+| Running backend natively in WSL2 with mirrored networking | ✅ **Confirmed working** (H.265 HEVC stream, ~15 fps) |
 | Running backend on Linux host with `network_mode: host` | ✅ Expected to work |
