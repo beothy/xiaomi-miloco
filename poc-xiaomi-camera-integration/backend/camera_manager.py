@@ -1,5 +1,3 @@
-# Copyright (C) 2025 Xiaomi Corporation
-# This software may be used and distributed according to the terms of the Xiaomi Miloco License Agreement.
 
 """
 Camera manager for the PoC.
@@ -39,6 +37,13 @@ def _camera_info_to_dict(info: MIoTCameraInfo) -> dict:
         "room_name": info.room_name,
         "local_ip": info.local_ip,
         "lan_status": info.lan_status,
+        # Tier 1 — already fetched as part of get_cameras_async(), zero extra API calls
+        "rssi": info.rssi,
+        "fw_version": info.fw_version,
+        "mcu_version": info.mcu_version,
+        "ssid": info.ssid,
+        "icon": info.icon,
+        "platform": info.platform,
     }
 
 

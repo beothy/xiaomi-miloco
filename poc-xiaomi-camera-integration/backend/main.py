@@ -1,6 +1,3 @@
-# Copyright (C) 2025 Xiaomi Corporation
-# This software may be used and distributed according to the terms of the Xiaomi Miloco License Agreement.
-
 """
 PoC FastAPI server for Xiaomi camera integration.
 
@@ -33,7 +30,7 @@ from config import (
 )
 from auth import get_auth_manager
 from camera_manager import get_camera_list, get_stream_manager
-from miot.types import MIoTSetPropertyParam, MIoTActionParam
+from miot.types import MIoTSetPropertyParam, MIoTActionParam, MIoTGetPropertyParam
 
 logging.basicConfig(
     level=getattr(logging, SERVER_LOG_LEVEL.upper(), logging.INFO),
@@ -84,6 +81,13 @@ class CallActionRequest(BaseModel):
     siid: int
     aiid: int
     in_: list = []  # Action input parameters
+
+
+class GetPropertyRequest(BaseModel):
+    """A single siid/piid pair for batch property reads."""
+
+    siid: int
+    piid: int
 
 
 @app.get("/api/auth/login_url", summary="Get Xiaomi OAuth2 login URL")
@@ -360,6 +364,123 @@ async def set_device_property(did: str, payload: SetPropertyRequest):
         return {"success": True, "result": result}
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("Failed to set property: %s", err)
+        raise HTTPException(status_code=500, detail=str(err)) from err
+
+
+_CURATED_PROPERTIES = frozenset([
+    "guard-mode", "on", "camera-status", "indicator-light",
+    "recording-mode", "motion-detection", "night-shot", "image-rollover",
+    "time-watermark", "wdr-mode", "glimmer-full-color", "motion-tracking",
+    "local-storage", "hdr-mode", "human-tracking", "ai-frame",
+])
+
+
+@app.get("/api/devices/{did}/spec", summary="Get device MIoT spec properties")
+async def get_device_spec(did: str):
+    """Resolve all MIoT properties for a device via MIoTSpecParser.
+
+    Returns services with their properties, each including siid/piid,
+    format, access flags, enum value lists, and a 'curated' flag for
+    well-known camera control properties.
+    """
+    auth = get_auth_manager()
+    if not auth.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        client = auth.client
+        if not client:
+            raise RuntimeError("MIoT client not initialized")
+
+        devices = await client.get_devices_async()
+        if did not in devices:
+            raise HTTPException(status_code=404, detail=f"Device {did} not found")
+
+        urn = devices[did].urn
+        if not urn:
+            raise HTTPException(status_code=422, detail="Device has no URN — cannot resolve spec")
+
+        spec_device = await client.spec_parser.parse_async(urn)
+        if spec_device is None:
+            raise HTTPException(status_code=422, detail=f"Could not parse spec for URN: {urn}")
+
+        services = []
+        for svc in spec_device.services:
+            properties = []
+            for prop in svc.properties:
+                value_list = None
+                if prop.value_list:
+                    value_list = [
+                        {"value": item.value, "label": item.description}
+                        for item in prop.value_list
+                    ]
+                value_range = None
+                if prop.value_range:
+                    value_range = {
+                        "min": prop.value_range.min_,
+                        "max": prop.value_range.max_,
+                        "step": prop.value_range.step,
+                    }
+                properties.append({
+                    "piid": prop.iid,
+                    "name": prop.name,
+                    "description_trans": prop.description_trans,
+                    "format": prop.format,
+                    "readable": prop.readable,
+                    "writable": prop.writable,
+                    "unit": prop.unit,
+                    "value_list": value_list,
+                    "value_range": value_range,
+                    "curated": prop.name in _CURATED_PROPERTIES,
+                })
+            services.append({
+                "siid": svc.iid,
+                "name": svc.name,
+                "description_trans": svc.description_trans,
+                "properties": properties,
+            })
+
+        return {"did": did, "urn": urn, "services": services}
+    except HTTPException:
+        raise
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("Failed to get device spec: %s", err)
+        raise HTTPException(status_code=500, detail=str(err)) from err
+
+
+@app.post("/api/devices/{did}/props/values", summary="Batch read property values")
+async def get_device_props_values(did: str, payload: list[GetPropertyRequest]):
+    """Batch-read current values for a list of siid/piid pairs.
+
+    Returns each property with its current value and a status code.
+    code=0 means success; any other code means the property is not
+    supported or readable on this device.
+    """
+    auth = get_auth_manager()
+    if not auth.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        client = auth.client
+        if not client or not client.http_client:
+            raise RuntimeError("MIoT client not initialized")
+
+        params = [
+            MIoTGetPropertyParam(did=did, siid=req.siid, piid=req.piid)
+            for req in payload
+        ]
+        results = await client.http_client.get_props_async(params=params)
+
+        # Normalise result: ensure each entry has siid/piid/value/code
+        normalised = []
+        for item in (results or []):
+            normalised.append({
+                "siid": item.get("siid"),
+                "piid": item.get("piid"),
+                "value": item.get("value"),
+                "code": item.get("code", -1),
+            })
+        return normalised
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("Failed to batch-read properties: %s", err)
         raise HTTPException(status_code=500, detail=str(err)) from err
 
 

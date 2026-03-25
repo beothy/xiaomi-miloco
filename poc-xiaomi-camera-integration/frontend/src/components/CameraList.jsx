@@ -1,10 +1,6 @@
-/**
- * Copyright (C) 2025 Xiaomi Corporation
- * This software may be used and distributed according to the terms of the Xiaomi Miloco License Agreement.
- */
-
 import React, { useState } from 'react'
 import VideoPlayer from './VideoPlayer.jsx'
+import CameraPropertiesPanel from './CameraPropertiesPanel.jsx'
 
 const STATUS_LABELS = {
   1: { label: 'Disconnected', color: '#8c8c8c' },
@@ -255,6 +251,9 @@ const CameraCard = ({ camera }) => {
         <span>📡 {camera.model}</span>
         {camera.local_ip && <span>🌐 {camera.local_ip}</span>}
         <span style={{ color: statusInfo.color }}>● {statusInfo.label}</span>
+        {camera.fw_version && <span>🔧 FW {camera.fw_version}</span>}
+        {camera.rssi != null && <span>📶 {camera.rssi} dBm</span>}
+        {camera.ssid && <span>WiFi: {camera.ssid}</span>}
       </div>
 
       {/* Video area */}
@@ -392,6 +391,9 @@ const CameraCard = ({ camera }) => {
           </div>
         </div>
       </div>
+
+      {/* Properties accordion */}
+      <CameraPropertiesPanel did={camera.did} />
     </div>
   )
 }
