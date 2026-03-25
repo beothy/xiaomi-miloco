@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import VideoPlayer from './VideoPlayer.jsx'
 import CameraPropertiesPanel from './CameraPropertiesPanel.jsx'
 
@@ -27,26 +27,51 @@ const styles = {
   cardHeader: {
     padding: '14px 16px 10px',
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
   cameraName: {
     fontSize: 15,
     fontWeight: 600,
     color: '#1a1a2e',
-    flex: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  badge: {
+  onlineStatus: {
     fontSize: 11,
     fontWeight: 600,
-    padding: '2px 8px',
-    borderRadius: 10,
-    color: 'white',
     flexShrink: 0,
+  },
+  toggleTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    border: 'none',
+    cursor: 'pointer',
+    position: 'relative',
+    transition: 'background 0.25s',
+    padding: 0,
+    flexShrink: 0,
+  },
+  toggleKnob: {
+    position: 'absolute',
+    top: 2,
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    background: 'white',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+    transition: 'left 0.25s',
+    pointerEvents: 'none',
   },
   meta: {
     padding: '0 16px 10px',
@@ -58,55 +83,52 @@ const styles = {
   },
   videoWrapper: {
     position: 'relative',
-    background: '#000',
+    background: '#111',
     aspectRatio: '16/9',
     overflow: 'hidden',
   },
-  placeholder: {
-    width: '100%',
-    height: '100%',
+  playOverlay: {
+    position: 'absolute',
+    inset: 0,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#555',
-    gap: 8,
-    fontSize: 14,
   },
-  placeholderIcon: {
-    fontSize: 36,
-    opacity: 0.5,
+  playCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.12)',
+    border: '2px solid rgba(255,255,255,0.6)',
+    color: 'white',
+    fontSize: 26,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'background 0.2s, transform 0.15s',
+  },
+  videoCornerBtn: {
+    position: 'absolute',
+    zIndex: 10,
+    background: 'rgba(0,0,0,0.45)',
+    color: 'white',
+    border: 'none',
+    borderRadius: 4,
+    width: 28,
+    height: 28,
+    fontSize: 14,
+    lineHeight: '28px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    opacity: 0.75,
   },
   cardFooter: {
     padding: '10px 16px',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
-  },
-  controlsRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTop: '1px solid #f0f0f0',
-    paddingTop: 10,
-  },
-  channelInfo: {
-    fontSize: 12,
-    color: '#aaa',
-  },
-  buttonGroup: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-  },
-  playBtn: {
-    padding: '6px 20px',
-    borderRadius: 6,
-    border: 'none',
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'background 0.2s',
   },
   ptzGrid: {
     display: 'grid',
@@ -157,44 +179,62 @@ const styles = {
  */
 const CameraCard = ({ camera }) => {
   const [playing, setPlaying] = useState(false)
-  const [channel, setChannel] = useState(0)
-  const [isEnabled, setIsEnabled] = useState(true)
+  const [channel] = useState(0)
+  const [isEnabled, setIsEnabled] = useState(null) // null while loading
+  const [onProperty, setOnProperty] = useState(null) // { siid, piid }
   const [togglingPower, setTogglingPower] = useState(false)
   const [ptzLoading, setPtzLoading] = useState(false)
   const [metaExpanded, setMetaExpanded] = useState(false)
 
-  const handleTogglePower = async () => {
-    setTogglingPower(true)
-    try {
-      // Try guard mode (siid=2, piid=1) - common for camera on/off
-      const newValue = !isEnabled
-      const response = await fetch(
-        `/api/devices/${camera.did}/prop/set`,
-        {
+  // Fetch and sync the actual 'on' property state on mount
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const specRes = await fetch(`/api/devices/${camera.did}/spec`)
+        if (!specRes.ok || cancelled) { setIsEnabled(true); return }
+        const spec = await specRes.json()
+        let onProp = null
+        for (const svc of spec.services || []) {
+          for (const prop of svc.properties || []) {
+            if (prop.name === 'on') { onProp = { siid: svc.siid, piid: prop.piid }; break }
+          }
+          if (onProp) break
+        }
+        if (!onProp) { setIsEnabled(true); return }
+        if (!cancelled) setOnProperty(onProp)
+        const valRes = await fetch(`/api/devices/${camera.did}/props/values`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            siid: 2,
-            piid: 1,
-            value: newValue,
-          }),
-        }
-      )
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setIsEnabled(newValue)
-          console.log(`Camera ${camera.name} turned ${newValue ? 'on' : 'off'}`)
-        } else {
-          alert(`Failed to toggle: ${JSON.stringify(data.result)}`)
-        }
-      } else {
-        alert(`Error: ${response.status} ${response.statusText}`)
+          body: JSON.stringify([onProp]),
+        })
+        if (!valRes.ok || cancelled) { setIsEnabled(true); return }
+        const vals = await valRes.json()
+        const entry = vals.find(v => v.siid === onProp.siid && v.piid === onProp.piid)
+        if (!cancelled) setIsEnabled(entry && entry.code === 0 ? entry.value : true)
+      } catch {
+        if (!cancelled) setIsEnabled(true)
       }
-    } catch (error) {
-      console.error('Failed to toggle camera power:', error)
-      alert(`Error toggling camera: ${error.message}`)
+    })()
+    return () => { cancelled = true }
+  }, [camera.did])
+
+  const handleTogglePower = async () => {
+    if (!onProperty || togglingPower) return
+    const newValue = !isEnabled
+    setTogglingPower(true)
+    try {
+      const res = await fetch(`/api/devices/${camera.did}/prop/set`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siid: onProperty.siid, piid: onProperty.piid, value: newValue }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success) setIsEnabled(newValue)
+      }
+    } catch (e) {
+      console.error('Power toggle failed:', e)
     } finally {
       setTogglingPower(false)
     }
@@ -203,26 +243,13 @@ const CameraCard = ({ camera }) => {
   const handlePTZAction = async (direction) => {
     setPtzLoading(true)
     try {
-      // Common PTZ action: siid=5, aiid=1 for pan/tilt
-      // direction: 0=left, 1=right, 2=up, 3=down
-      const response = await fetch(
-        `/api/devices/${camera.did}/action`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            siid: 5,
-            aiid: 1,
-            in_: [{ piid: 1, value: direction }],
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        console.warn(`PTZ action failed: ${response.status}`)
-      }
-    } catch (error) {
-      console.error(`PTZ action error: ${error.message}`)
+      await fetch(`/api/devices/${camera.did}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siid: 5, aiid: 1, in_: [{ piid: 1, value: direction }] }),
+      })
+    } catch (e) {
+      console.error('PTZ error:', e)
     } finally {
       setPtzLoading(false)
     }
@@ -235,15 +262,26 @@ const CameraCard = ({ camera }) => {
     <div style={styles.card}>
       {/* Header */}
       <div style={styles.cardHeader}>
-        <span style={styles.cameraName} title={camera.name}>{camera.name}</span>
-        <span
+        <div style={styles.headerLeft}>
+          <span style={styles.cameraName} title={camera.name}>{camera.name}</span>
+          <span style={{ ...styles.onlineStatus, color: isOnline ? '#52c41a' : '#ff4d4f' }}>
+            ● {isOnline ? 'Online' : 'Offline'}
+          </span>
+        </div>
+        {/* iOS-style power toggle */}
+        <button
           style={{
-            ...styles.badge,
-            background: isOnline ? '#52c41a' : '#ff4d4f',
+            ...styles.toggleTrack,
+            background: isEnabled ? '#52c41a' : '#bfbfbf',
+            opacity: togglingPower || isEnabled === null ? 0.55 : 1,
           }}
+          onClick={handleTogglePower}
+          disabled={togglingPower || isEnabled === null || !onProperty}
+          title={isEnabled ? 'Turn camera off' : 'Turn camera on'}
+          aria-label={isEnabled ? 'Turn camera off' : 'Turn camera on'}
         >
-          {isOnline ? 'Online' : 'Offline'}
-        </span>
+          <div style={{ ...styles.toggleKnob, left: isEnabled ? 22 : 2 }} />
+        </button>
       </div>
 
       {/* Meta info */}
@@ -280,68 +318,40 @@ const CameraCard = ({ camera }) => {
       {/* Video area */}
       <div style={styles.videoWrapper}>
         {playing ? (
-          <VideoPlayer
-            cameraId={camera.did}
-            channel={channel}
-            onStop={() => setPlaying(false)}
-          />
+          <>
+            <VideoPlayer
+              cameraId={camera.did}
+              channel={channel}
+              onStop={() => setPlaying(false)}
+            />
+            {/* Stop button — bottom-left corner */}
+            <button
+              style={{ ...styles.videoCornerBtn, bottom: 8, left: 8 }}
+              onClick={() => setPlaying(false)}
+              title="Stop stream"
+            >
+              ■
+            </button>
+          </>
         ) : (
-          <div style={styles.placeholder}>
-            <span style={styles.placeholderIcon}>🎥</span>
-            <span>{isOnline ? 'Click Play to start stream' : 'Camera offline'}</span>
+          <div
+            style={{ ...styles.playOverlay, cursor: isOnline ? 'pointer' : 'default' }}
+            onClick={() => isOnline && setPlaying(true)}
+          >
+            <div style={{ ...styles.playCircle, opacity: isOnline ? 1 : 0.3 }}>
+              ▶
+            </div>
+            {!isOnline && (
+              <span style={{ color: '#666', fontSize: 12, marginTop: 10 }}>Camera offline</span>
+            )}
           </div>
         )}
       </div>
 
       {/* Footer */}
       <div style={styles.cardFooter}>
-        <div style={styles.controlsRow}>
-          <span style={styles.channelInfo}>
-            {camera.channel_count > 1
-              ? `Channel ${channel + 1} / ${camera.channel_count}`
-              : `${camera.channel_count} channel`}
-          </span>
-          <div style={styles.buttonGroup}>
-            {camera.channel_count > 1 && !playing && (
-              <select
-                value={channel}
-                onChange={(e) => setChannel(Number(e.target.value))}
-                style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, border: '1px solid #d9d9d9' }}
-              >
-                {Array.from({ length: camera.channel_count }, (_, i) => (
-                  <option key={i} value={i}>Channel {i + 1}</option>
-                ))}
-              </select>
-            )}
-            <button
-              style={{
-                ...styles.playBtn,
-                background: isEnabled ? '#52c41a' : '#ff4d4f',
-                color: 'white',
-                opacity: togglingPower ? 0.6 : 1,
-              }}
-              onClick={handleTogglePower}
-              disabled={togglingPower}
-              title={isEnabled ? 'Turn camera off' : 'Turn camera on'}
-            >
-              {togglingPower ? '...' : (isEnabled ? '🟢 On' : '⭕ Off')}
-            </button>
-            <button
-              style={{
-                ...styles.playBtn,
-                background: playing ? '#ff4d4f' : (isOnline ? '#1677ff' : '#d9d9d9'),
-                color: 'white',
-              }}
-              onClick={() => setPlaying(!playing)}
-              disabled={!isOnline && !playing}
-            >
-              {playing ? '■ Stop' : '▶ Play'}
-            </button>
-          </div>
-        </div>
-
         {/* PTZ Controls */}
-        <div style={{ paddingTop: 8, borderTop: '1px solid #f0f0f0' }}>
+        <div>
           <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6 }}>Move Camera</div>
           <div style={styles.ptzGrid}>
             {/* Empty spacer */}
@@ -412,6 +422,7 @@ const CameraCard = ({ camera }) => {
           </div>
         </div>
       </div>
+
 
       {/* Properties accordion */}
       <CameraPropertiesPanel did={camera.did} />
