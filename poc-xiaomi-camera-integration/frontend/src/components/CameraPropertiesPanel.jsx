@@ -199,8 +199,8 @@ const PropertyRow = ({ siid, piid, prop, value, saving, onWrite }) => {
 
   return (
     <div style={styles.row}>
-      <span style={styles.propLabel} title={prop.description_trans}>
-        {prop.description_trans || prop.name}
+      <span style={styles.propLabel} title={prop.description}>
+        {prop.description || prop.name}
       </span>
       <span style={styles.propControl}>{renderControl()}</span>
     </div>
@@ -344,7 +344,7 @@ const CameraPropertiesPanel = ({ did }) => {
       if (!svc.properties.length) return null
       return (
         <div key={svc.siid}>
-          <div style={styles.sectionTitle}>{svc.description_trans || svc.name}</div>
+          <div style={styles.sectionTitle}>{svc.description || svc.name}</div>
           {svc.properties.map(prop => (
             <PropertyRow
               key={`${svc.siid}.${prop.piid}`}

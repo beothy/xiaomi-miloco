@@ -410,7 +410,7 @@ async def get_device_spec(did: str):
                 value_list = None
                 if prop.value_list:
                     value_list = [
-                        {"value": item.value, "label": item.description}
+                        {"value": item.value, "label": item.name}
                         for item in prop.value_list
                     ]
                 value_range = None
@@ -423,7 +423,7 @@ async def get_device_spec(did: str):
                 properties.append({
                     "piid": prop.iid,
                     "name": prop.name,
-                    "description_trans": prop.description_trans,
+                    "description": prop.description,
                     "format": prop.format,
                     "readable": prop.readable,
                     "writable": prop.writable,
@@ -435,7 +435,7 @@ async def get_device_spec(did: str):
             services.append({
                 "siid": svc.iid,
                 "name": svc.name,
-                "description_trans": svc.description_trans,
+                "description": svc.description,
                 "properties": properties,
             })
 
