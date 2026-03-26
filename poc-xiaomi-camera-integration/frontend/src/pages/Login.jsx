@@ -181,12 +181,35 @@ const Login = ({ onLogin }) => {
     }
   }, [])
 
+  // Parses the base64-encoded JSON that the mico.api.mijia.tech relay page copies
+  // when the user clicks the copy button: btoa(JSON.stringify({code, state, ...}))
+  const parseCodeStateFromRelayBase64 = useCallback((text) => {
+    if (!text) return null
+    try {
+      const json = JSON.parse(decodeURIComponent(escape(atob(text.trim()))))
+      if (json.code && json.state) return { code: json.code, state: json.state }
+    } catch {
+      // not base64 JSON
+    }
+    return null
+  }, [])
+
   const tryCompleteFromClipboard = useCallback(async () => {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
       return false
     }
     try {
       const clipText = await navigator.clipboard.readText()
+      // Try relay base64 format first (copy button on mico.api.mijia.tech page)
+      const parsedB64 = parseCodeStateFromRelayBase64(clipText)
+      if (parsedB64) {
+        setManualLoading(true)
+        setStatusMsg('Detected authorization code in clipboard. Completing login...')
+        setError(false)
+        await exchangeCodeState(parsedB64.code, parsedB64.state)
+        return true
+      }
+      // Fall back to full redirect URL format
       const parsed = parseCodeStateFromUrl(clipText)
       if (!parsed) {
         return false
@@ -201,7 +224,7 @@ const Login = ({ onLogin }) => {
     } finally {
       setManualLoading(false)
     }
-  }, [exchangeCodeState, parseCodeStateFromUrl])
+  }, [exchangeCodeState, parseCodeStateFromUrl, parseCodeStateFromRelayBase64])
 
   // Listen for postMessage from the OAuth callback popup
   useEffect(() => {
@@ -246,6 +269,19 @@ const Login = ({ onLogin }) => {
         if (!popup || popup.closed) {
           clearInterval(timer)
           const completeAfterClose = async () => {
+            setStatusMsg('Checking login status...')
+            try {
+              const res = await axios.get('/api/auth/status')
+              if (res.data?.authenticated) {
+                setLoading(false)
+                setStatusMsg('Login successful! Redirecting...')
+                setError(false)
+                onLogin()
+                return
+              }
+            } catch (_) {
+              // ignore — fall through to clipboard / manual fallback
+            }
             setLoading(false)
             const autoDone = await tryCompleteFromClipboard()
             if (autoDone) {
@@ -303,9 +339,15 @@ const Login = ({ onLogin }) => {
     setError(false)
     try {
       const clipText = await navigator.clipboard.readText()
+      // Try relay base64 format (copy button on mico.api.mijia.tech page)
+      const parsedB64 = parseCodeStateFromRelayBase64(clipText)
+      if (parsedB64) {
+        await exchangeCodeState(parsedB64.code, parsedB64.state)
+        return
+      }
       const parsed = parseCodeStateFromUrl(clipText)
       if (!parsed) {
-        setStatusMsg('Clipboard does not contain a valid redirected URL with code/state.')
+        setStatusMsg('Clipboard does not contain a valid authorization code or redirect URL.')
         setError(true)
         return
       }
@@ -316,7 +358,7 @@ const Login = ({ onLogin }) => {
     } finally {
       setManualLoading(false)
     }
-  }, [parseCodeStateFromUrl, exchangeCodeState])
+  }, [parseCodeStateFromUrl, parseCodeStateFromRelayBase64, exchangeCodeState])
 
   return (
     <div style={styles.page}>
@@ -353,12 +395,12 @@ const Login = ({ onLogin }) => {
         </p>
         {showManualHelper && (
           <div style={styles.helper}>
-            Xiaomi redirects to <code>https://127.0.0.1/?code=...&amp;state=...</code>.
-            If that page fails to open, copy the full URL from the popup address bar and paste it below.
+            Click the <strong>copy icon</strong> on the authorization page, then click the button below.
+            Alternatively, paste the full redirect URL from the popup address bar.
             <input
               style={styles.input}
               type="text"
-              placeholder="https://127.0.0.1/?code=...&state=..."
+              placeholder="Paste redirect URL here (optional)"
               value={manualRedirectUrl}
               onChange={(event) => setManualRedirectUrl(event.target.value)}
             />
@@ -370,7 +412,7 @@ const Login = ({ onLogin }) => {
               onClick={handleClipboardExchange}
               disabled={manualLoading}
             >
-              {manualLoading ? 'Reading Clipboard...' : 'Use URL from Clipboard'}
+              {manualLoading ? 'Reading Clipboard...' : 'Complete Login from Clipboard'}
             </button>
             <button
               style={{

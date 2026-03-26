@@ -181,6 +181,14 @@ async def oauth_callback(code: str = Query(...), state: str = Query(...)):
         return HTMLResponse(content=html, status_code=400)
 
 
+@app.post("/api/auth/logout", summary="Log out and invalidate session")
+async def logout():
+    """Clear the server-side session so subsequent /api/auth/status calls return unauthenticated."""
+    auth = get_auth_manager()
+    await auth.logout_async()
+    return {"authenticated": False}
+
+
 @app.get("/api/auth/status", summary="Check authentication status")
 async def auth_status():
     """Return whether the user is authenticated and basic user info."""
@@ -227,6 +235,49 @@ async def exchange_oauth_code(payload: OAuthCodeExchangeRequest):
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("OAuth code exchange failed: %s", err)
         raise HTTPException(status_code=400, detail=str(err)) from err
+
+
+# ---------------------------------------------------------------------------
+# Xiaomi OAuth relay callback
+# ---------------------------------------------------------------------------
+
+@app.get("/miot/xiaomi_home_callback", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/api/miot/xiaomi_home_callback", summary="Xiaomi OAuth relay callback", response_class=HTMLResponse)
+async def xiaomi_home_callback(code: str = Query(...), state: str = Query(...)):
+    """
+    Receives the OAuth2 redirect from https://mico.api.mijia.tech/login_redirect.
+
+    The Xiaomi relay service forwards the user's browser here after they grant
+    access on the Xiaomi login page.  This endpoint exchanges the code for a
+    token and renders an auto-closing success/error page.
+    """
+    template_path = os.path.join(os.path.dirname(__file__), "templates", "miot_login_callback.html")
+    with open(template_path, encoding="utf-8") as f:
+        template = f.read()
+
+    auth = get_auth_manager()
+    try:
+        oauth_info = await auth.process_callback(code=code, state=state)
+        user_info = oauth_info.user_info
+        nickname = user_info.nickname if user_info else "Xiaomi User"
+        html = (
+            template
+            .replace("TITLE_PLACEHOLDER", "Authorization Successful")
+            .replace("CONTENT_PLACEHOLDER", f"Welcome, {nickname}! This window will close automatically.")
+            .replace("BUTTON_PLACEHOLDER", "Close")
+            .replace("STATUS_PLACEHOLDER", "true")
+        )
+        return HTMLResponse(content=html)
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        logger.error("OAuth relay callback failed: %s", err)
+        html = (
+            template
+            .replace("TITLE_PLACEHOLDER", "Authorization Failed")
+            .replace("CONTENT_PLACEHOLDER", f"Login failed: {err}")
+            .replace("BUTTON_PLACEHOLDER", "Close")
+            .replace("STATUS_PLACEHOLDER", "false")
+        )
+        return HTMLResponse(content=html, status_code=400)
 
 
 # ---------------------------------------------------------------------------

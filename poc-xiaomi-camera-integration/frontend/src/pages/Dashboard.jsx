@@ -142,7 +142,10 @@ const Dashboard = ({ onLogout }) => {
               👤 {user.nickname || user.uid}
             </span>
           )}
-          <button style={styles.logoutBtn} onClick={onLogout}>
+          <button style={styles.logoutBtn} onClick={async () => {
+            try { await axios.post('/api/auth/logout') } catch (_) {}
+            onLogout()
+          }}>
             Logout
           </button>
         </div>

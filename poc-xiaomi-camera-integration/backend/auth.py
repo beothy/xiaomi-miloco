@@ -213,6 +213,20 @@ class AuthManager:
             return False
         return await self._client.check_token_async()
 
+    async def logout_async(self) -> None:
+        """Clear the current session from memory and from the persistent cache."""
+        self._oauth_info = None
+        # Delete cached credentials so the session is not restored on restart
+        try:
+            storage = MIoTStorage(CACHE_DIR)
+            uuid_key = f"{self._cloud_server}_uuid"
+            oauth_key = f"{self._cloud_server}_oauth2_info"
+            await storage.remove_async(domain=_STORAGE_DOMAIN, name=uuid_key, type_=str)
+            await storage.remove_async(domain=_STORAGE_DOMAIN, name=oauth_key, type_=dict)
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass  # Best-effort cleanup
+        logger.info("User logged out, session cleared")
+
 
 # Singleton instance
 _auth_manager: Optional[AuthManager] = None
