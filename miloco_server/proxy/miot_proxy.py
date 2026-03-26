@@ -231,6 +231,12 @@ class MiotProxy:
         try:
             cameras = await self._miot_client.get_cameras_async()
             cameras = copy.deepcopy(cameras)
+            # Restore the cloud online status from devices, since get_cameras_async()
+            # overwrites online with P2P connection status (which fails under Docker Desktop NAT)
+            if self._device_info_dict:
+                for did, camera_info in cameras.items():
+                    if did in self._device_info_dict:
+                        camera_info.online = self._device_info_dict[did].online
             for camera_did in cameras.keys():
                 if camera_did not in self._camera_img_managers:
                     await self._create_camera_img_manager(cameras[camera_did])
